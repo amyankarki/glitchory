@@ -93,14 +93,13 @@
       });
     }
 
-    function Header({ go, showAdmin, setShowAdmin }) {
+    function Header({ go, setShowAdmin }) {
       return (
         <header><div className="container"><div className="header-content">
           <div className="logo" onClick={() => { go('home'); setShowAdmin(false); }}>🎮 glitchory</div>
           <nav>
             <a onClick={() => { go('home'); setShowAdmin(false); }}>Home</a>
             <a onClick={() => { go('articles'); setShowAdmin(false); }}>News</a>
-            <button className="admin-btn" onClick={() => setShowAdmin(s => !s)}>{showAdmin ? 'View Site' : 'Admin'}</button>
           </nav>
         </div></div></header>
       );
@@ -476,15 +475,23 @@ Questions about this policy can be sent to hello@glitchory.com.`}
     }
 
     function App() {
+      // Secret admin entrance: only show the admin panel when the URL is /aman
+      const onAdminPath = window.location.pathname.replace(/\/+$/,'').toLowerCase() === '/aman';
       const [page, setPage] = useState('home');
       const [slug, setSlug] = useState(null);
-      const [showAdmin, setShowAdmin] = useState(false);
+      const [showAdmin, setShowAdmin] = useState(onAdminPath);
       const [adminKey, setAdminKey] = useState(localStorage.getItem('adminKey') || null);
 
       const go = (p) => { setPage(p); setSlug(null); };
       const openArticle = (s) => { setSlug(s); setPage('detail'); };
       const login = (k) => { localStorage.setItem('adminKey', k); setAdminKey(k); };
-      const logout = () => { localStorage.removeItem('adminKey'); setAdminKey(null); setShowAdmin(false); go('home'); };
+      const logout = () => {
+        localStorage.removeItem('adminKey');
+        setAdminKey(null);
+        setShowAdmin(false);
+        go('home');
+        if (window.location.pathname !== '/') window.history.replaceState({}, '', '/');
+      };
 
       let content;
       if (showAdmin) content = adminKey ? <AdminPanel adminKey={adminKey} onLogout={logout}/> : <AdminLogin onLogin={login}/>;
@@ -496,7 +503,7 @@ Questions about this policy can be sent to hello@glitchory.com.`}
       else content = <ArticlesPage openArticle={openArticle}/>;
 
       return (<div>
-        <Header go={go} showAdmin={showAdmin} setShowAdmin={setShowAdmin}/>
+        <Header go={go} setShowAdmin={setShowAdmin}/>
         {content}
         <footer><div className="container">
           <div style={{display:'flex', gap:'20px', justifyContent:'center', marginBottom:'12px', flexWrap:'wrap'}}>
