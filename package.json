@@ -1,0 +1,20 @@
+{
+  "name": "glitchory",
+  "version": "3.0.0",
+  "description": "glitchory - tech and gaming news site",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@babel/core": "^7.29.7",
+    "@babel/preset-react": "^7.29.7",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "mongodb": "^6.10.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

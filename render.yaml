@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: glitchory
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: ADMIN_KEY
+        sync: false
+      - key: MONGODB_URI
+        sync: false
