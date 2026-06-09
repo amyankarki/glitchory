@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="glitchory - latest tech and gaming news">
+  <title>glitchory</title>
+  <!-- Google AdSense (needed for the site review) -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2286202749889925" crossorigin="anonymous"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f9fa; color: #1a1a1a; line-height: 1.6; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+    header { background: white; border-bottom: 1px solid #e0e0e0; padding: 20px 0; position: sticky; top: 0; z-index: 100; }
+    .header-content { display: flex; justify-content: space-between; align-items: center; }
+    .logo { font-size: 24px; font-weight: 700; cursor: pointer; color: #1a1a1a; }
+    nav { display: flex; gap: 30px; align-items: center; }
+    nav a { color: #1a1a1a; font-weight: 500; cursor: pointer; }
+    nav a:hover { color: #0066cc; }
+    .admin-btn { background: #0066cc; color: white; padding: 8px 16px; border-radius: 4px; cursor: pointer; border: none; font-weight: 600; }
+    .admin-btn:hover { background: #0052a3; }
+    main { padding: 40px 0; min-height: calc(100vh - 200px); }
+    .hero { background: linear-gradient(135deg, #0066cc 0%, #00a3ff 100%); color: white; padding: 60px 20px; border-radius: 8px; margin-bottom: 40px; text-align: center; }
+    .hero h1 { font-size: 48px; margin-bottom: 20px; }
+    .hero p { font-size: 18px; opacity: 0.95; }
+    .category-filter { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; }
+    .category-btn { background: white; border: 2px solid #e0e0e0; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: 600; }
+    .category-btn.active { background: #0066cc; color: white; border-color: #0066cc; }
+    .articles-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 30px; margin-bottom: 40px; }
+    .article-card { background: white; border-radius: 8px; overflow: hidden; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: transform 0.3s, box-shadow 0.3s; }
+    .article-card:hover { transform: translateY(-4px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .article-image { width: 100%; height: 200px; object-fit: cover; background: #e0e0e0; }
+    .article-content { padding: 20px; }
+    .article-meta { display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-bottom: 10px; }
+    .article-category { background: #f0f0f0; padding: 4px 8px; border-radius: 4px; font-weight: 600; }
+    .article-card h3 { font-size: 18px; margin: 10px 0; }
+    .article-card p { color: #666; font-size: 14px; margin-bottom: 10px; }
+    .read-more { color: #0066cc; font-weight: 600; cursor: pointer; }
+    .article-detail { background: white; border-radius: 8px; padding: 40px; }
+    .article-detail h1 { font-size: 38px; margin-bottom: 20px; line-height: 1.2; }
+    .article-detail .meta { display: flex; gap: 20px; font-size: 14px; color: #666; margin-bottom: 30px; }
+    .article-detail img.feat { width: 100%; max-height: 450px; object-fit: cover; border-radius: 8px; margin-bottom: 30px; }
+    .article-body { font-size: 17px; line-height: 1.8; color: #333; white-space: pre-wrap; }
+    .back-link { color: #0066cc; cursor: pointer; font-weight: 600; margin-bottom: 20px; display: inline-block; }
+    .admin-panel { background: white; border-radius: 8px; padding: 30px; }
+    .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #e0e0e0; padding-bottom: 20px; }
+    .admin-tabs { display: flex; gap: 20px; margin-bottom: 30px; border-bottom: 1px solid #e0e0e0; }
+    .admin-tab { padding: 10px 20px; cursor: pointer; border: none; background: none; font-weight: 600; color: #666; border-bottom: 3px solid transparent; }
+    .admin-tab.active { color: #0066cc; border-bottom-color: #0066cc; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; margin-bottom: 8px; font-weight: 600; color: #333; }
+    input, textarea, select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px; }
+    textarea { min-height: 250px; resize: vertical; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: #0066cc; box-shadow: 0 0 0 3px rgba(0,102,204,0.1); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .checkbox-row { display: flex; align-items: center; gap: 8px; }
+    .checkbox-row input { width: auto; }
+    .btn { padding: 10px 20px; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 14px; }
+    .btn-primary { background: #0066cc; color: white; }
+    .btn-primary:hover { background: #0052a3; }
+    .btn-secondary { background: #f0f0f0; color: #1a1a1a; }
+    .btn-danger { background: #dc3545; color: white; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+    th { background: #f8f9fa; font-weight: 600; }
+    .alert { padding: 14px; border-radius: 4px; margin-bottom: 20px; font-weight: 500; }
+    .alert-success { background: #d4edda; color: #155724; }
+    .alert-error { background: #f8d7da; color: #721c24; }
+    .loading { text-align: center; padding: 40px; color: #666; }
+    .spinner { border: 3px solid #f0f0f0; border-top: 3px solid #0066cc; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    footer { background: #1a1a1a; color: white; padding: 40px 0; margin-top: 60px; text-align: center; }
+    @media (max-width: 768px) { .form-row { grid-template-columns: 1fr; } .articles-grid { grid-template-columns: 1fr; } .hero h1 { font-size: 32px; } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect } = React;
+
+    function api(path, opts) {
+      return fetch(path, opts).then(async r => {
+        const text = await r.text();
+        let body; try { body = JSON.parse(text); } catch { body = {}; }
+        if (!r.ok) throw new Error(body.error || ('Request failed (' + r.status + ')'));
+        return body;
+      });
+    }
+
+    function Header({ go, showAdmin, setShowAdmin }) {
+      return (
+        <header><div className="container"><div className="header-content">
+          <div className="logo" onClick={() => { go('home'); setShowAdmin(false); }}>🎮 glitchory</div>
+          <nav>
+            <a onClick={() => { go('home'); setShowAdmin(false); }}>Home</a>
+            <a onClick={() => { go('articles'); setShowAdmin(false); }}>News</a>
+            <button className="admin-btn" onClick={() => setShowAdmin(s => !s)}>{showAdmin ? 'View Site' : 'Admin'}</button>
+          </nav>
+        </div></div></header>
+      );
+    }
+
+    function ArticleCard({ a, openArticle }) {
+      return (
+        <article className="article-card" onClick={() => openArticle(a.slug)}>
+          {a.featured_image ? <img src={a.featured_image} className="article-image" alt={a.title}/> : null}
+          <div className="article-content">
+            <div className="article-meta"><span className="article-category">{a.category}</span><span>{new Date(a.created_at).toLocaleDateString()}</span></div>
+            <h3>{a.title}</h3><p>{a.excerpt}</p><span className="read-more">Read More →</span>
+          </div>
+        </article>
+      );
+    }
+
+    function HomePage({ go, openArticle }) {
+      const [articles, setArticles] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        api('/api/articles?page=1&limit=6')
+          .then(d => { setArticles(d.articles || []); setLoading(false); })
+          .catch(() => setLoading(false));
+      }, []);
+
+      return (<main><div className="container">
+        <div className="hero"><h1>glitchory</h1><p>The latest in technology and gaming</p></div>
+        <h2 style={{marginBottom:'24px'}}>Latest Stories</h2>
+        {loading
+          ? <div className="loading"><div className="spinner"></div>Loading...</div>
+          : articles.length === 0
+            ? <div className="loading"><p>No articles published yet. Go to Admin to create your first post!</p></div>
+            : <>
+                <div className="articles-grid">{articles.map(a => <ArticleCard key={a.id} a={a} openArticle={openArticle}/>)}</div>
+                <div style={{textAlign:'center', marginTop:'10px'}}>
+                  <button className="btn btn-primary" onClick={() => go('articles')}>View all news →</button>
+                </div>
+              </>}
+      </div></main>);
+    }
+
+    function ArticlesPage({ openArticle }) {
+      const [articles, setArticles] = useState([]);
+      const [categories, setCategories] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [cat, setCat] = useState('all');
+
+      useEffect(() => { api('/api/categories').then(setCategories).catch(()=>{}); }, []);
+      useEffect(() => {
+        setLoading(true);
+        const url = '/api/articles?page=1' + (cat !== 'all' ? '&category=' + cat : '');
+        api(url).then(d => { setArticles(d.articles || []); setLoading(false); }).catch(() => setLoading(false));
+      }, [cat]);
+
+      if (loading) return <main><div className="container"><div className="loading"><div className="spinner"></div>Loading...</div></div></main>;
+
+      return (<main><div className="container">
+        <div className="category-filter">
+          <button className={'category-btn ' + (cat==='all'?'active':'')} onClick={() => setCat('all')}>All</button>
+          {categories.map(c => <button key={c.id} className={'category-btn ' + (cat===c.slug?'active':'')} onClick={() => setCat(c.slug)}>{c.name}</button>)}
+        </div>
+        {articles.length === 0
+          ? <div className="loading"><p>No articles published yet. Go to Admin to create one!</p></div>
+          : <div className="articles-grid">{articles.map(a => <ArticleCard key={a.id} a={a} openArticle={openArticle}/>)}</div>}
+      </div></main>);
+    }
+
+    function ArticleDetail({ slug, go }) {
+      const [article, setArticle] = useState(null);
+      const [loading, setLoading] = useState(true);
+      useEffect(() => { api('/api/articles/' + slug).then(d => { setArticle(d); setLoading(false); }).catch(() => setLoading(false)); }, [slug]);
+      if (loading) return <main><div className="container"><div className="loading"><div className="spinner"></div>Loading...</div></div></main>;
+      if (!article) return <main><div className="container"><p>Article not found.</p></div></main>;
+      return (<main><div className="container"><div className="article-detail">
+        <span className="back-link" onClick={() => go('articles')}>← Back to News</span>
+        <h1>{article.title}</h1>
+        <div className="meta"><span>{article.category}</span><span>{new Date(article.created_at).toLocaleDateString()}</span><span>{article.views} views</span></div>
+        {article.featured_image ? <img src={article.featured_image} className="feat" alt={article.title}/> : null}
+        <div className="article-body">{article.content}</div>
+      </div></div></main>);
+    }
+
+    function AdminLogin({ onLogin }) {
+      const [key, setKey] = useState('');
+      const [err, setErr] = useState('');
+      const submit = () => { if (!key.trim()) { setErr('Please enter the admin key'); return; } onLogin(key.trim()); };
+      return (<main><div className="container"><div className="admin-panel" style={{maxWidth:'400px', margin:'60px auto'}}>
+        <h2 style={{marginBottom:'24px', textAlign:'center'}}>Admin Login</h2>
+        {err ? <div className="alert alert-error">{err}</div> : null}
+        <div className="form-group"><label>Admin Key</label>
+          <input type="password" value={key} autoFocus onChange={e => setKey(e.target.value)} onKeyDown={e => e.key==='Enter' && submit()} placeholder="Enter admin key"/>
+        </div>
+        <button className="btn btn-primary" style={{width:'100%'}} onClick={submit}>Login</button>
+        <p style={{fontSize:'12px', color:'#666', textAlign:'center', marginTop:'14px'}}>Default key: admin123</p>
+      </div></div></main>);
+    }
+
+    // Reads an image file, shrinks it to a web-friendly size, returns a compressed data URL.
+    function resizeImageToDataUrl(file, maxW, cb) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, maxW / img.width);
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          cb(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = () => cb(null);
+        img.src = e.target.result;
+      };
+      reader.onerror = () => cb(null);
+      reader.readAsDataURL(file);
+    }
+
+    const EMPTY = { title:'', content:'', excerpt:'', category:'tech-news', featured_image:'', published:true };
+
+    function AdminPanel({ adminKey, onLogout }) {
+      const [tab, setTab] = useState('articles');
+      const [articles, setArticles] = useState([]);
+      const [form, setForm] = useState(EMPTY);
+      const [editId, setEditId] = useState(null);
+      const [msg, setMsg] = useState('');
+      const [settings, setSettings] = useState({ adsenseId:'', siteName:'', siteDescription:'' });
+
+      const H = { 'Content-Type':'application/json', 'x-admin-key': adminKey };
+      const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3500); };
+
+      const load = () => api('/admin/articles', { headers: { 'x-admin-key': adminKey } })
+        .then(d => setArticles(Array.isArray(d) ? d : []))
+        .catch(e => flash('✗ ' + e.message));
+
+      useEffect(() => { load(); }, []);
+      useEffect(() => { if (tab==='settings') api('/admin/settings',{headers:{'x-admin-key':adminKey}}).then(setSettings).catch(()=>{}); }, [tab]);
+
+      const submit = () => {
+        if (!form.title.trim() || !form.content.trim()) { flash('✗ Title and Content are required'); return; }
+        const method = editId ? 'PUT' : 'POST';
+        const url = editId ? '/admin/articles/' + editId : '/admin/articles';
+        api(url, { method, headers: H, body: JSON.stringify(form) })
+          .then(() => { flash(editId ? '✓ Article updated' : '✓ Article published'); setForm(EMPTY); setEditId(null); load(); })
+          .catch(e => flash('✗ ' + e.message));
+      };
+
+      const edit = (a) => { setForm({ title:a.title, content:a.content, excerpt:a.excerpt, category:a.category, featured_image:a.featured_image, published:a.published }); setEditId(a.id); window.scrollTo(0,0); };
+      const del = (id) => { if (!confirm('Delete this article?')) return; api('/admin/articles/'+id, { method:'DELETE', headers:{'x-admin-key':adminKey} }).then(() => { flash('✓ Deleted'); load(); }).catch(e => flash('✗ '+e.message)); };
+      const saveSettings = () => api('/admin/settings', { method:'POST', headers:H, body: JSON.stringify(settings) }).then(() => flash('✓ Settings saved')).catch(e => flash('✗ '+e.message));
+
+      return (<main><div className="container"><div className="admin-panel">
+        <div className="admin-header"><h1>Admin Panel</h1><button className="btn btn-secondary" onClick={onLogout}>Logout</button></div>
+        {msg ? <div className={'alert ' + (msg[0]==='✗' ? 'alert-error':'alert-success')}>{msg}</div> : null}
+        <div className="admin-tabs">
+          <button className={'admin-tab ' + (tab==='articles'?'active':'')} onClick={() => setTab('articles')}>Articles</button>
+          <button className={'admin-tab ' + (tab==='settings'?'active':'')} onClick={() => setTab('settings')}>Settings</button>
+        </div>
+
+        {tab==='articles' && <div>
+          <h3 style={{marginBottom:'20px'}}>{editId ? 'Edit Article' : 'Create New Article'}</h3>
+          <div style={{marginBottom:'40px'}}>
+            <div className="form-row">
+              <div className="form-group"><label>Title *</label><input type="text" value={form.title} onChange={e => setForm({...form, title:e.target.value})}/></div>
+              <div className="form-group"><label>Category</label>
+                <select value={form.category} onChange={e => setForm({...form, category:e.target.value})}>
+                  <option value="tech-news">Tech News</option><option value="gaming">Gaming</option><option value="reviews">Reviews</option>
+                </select></div>
+            </div>
+            <div className="form-group"><label>Excerpt (short summary)</label><textarea style={{minHeight:'80px'}} value={form.excerpt} onChange={e => setForm({...form, excerpt:e.target.value})} placeholder="One or two sentences shown on the article card"></textarea></div>
+            <div className="form-group"><label>Content *</label><textarea value={form.content} onChange={e => setForm({...form, content:e.target.value})} placeholder="Write your full article here..."></textarea></div>
+            <div className="form-group">
+              <label>Featured Image / Thumbnail (optional)</label>
+              <input type="text" value={form.featured_image && form.featured_image.startsWith('data:') ? '' : form.featured_image} onChange={e => setForm({...form, featured_image:e.target.value})} placeholder="Paste an image URL, or upload a file below"/>
+              <div style={{marginTop:'10px'}}>
+                <input type="file" accept="image/*" onChange={e => {
+                  const f = e.target.files[0];
+                  if (!f) return;
+                  flash('Processing image...');
+                  resizeImageToDataUrl(f, 1000, (dataUrl) => {
+                    if (dataUrl) { setForm(prev => ({...prev, featured_image: dataUrl})); flash('✓ Image added'); }
+                    else flash('✗ Could not read that image file');
+                  });
+                }}/>
+              </div>
+              {form.featured_image ? <div style={{marginTop:'12px'}}>
+                <img src={form.featured_image} alt="preview" style={{maxHeight:'140px', borderRadius:'6px', display:'block', border:'1px solid #e0e0e0'}}/>
+                <button type="button" className="btn btn-secondary" style={{marginTop:'8px', padding:'4px 10px'}} onClick={() => setForm({...form, featured_image:''})}>Remove image</button>
+              </div> : null}
+            </div>
+            <div className="form-group checkbox-row"><input type="checkbox" id="pub" checked={form.published} onChange={e => setForm({...form, published:e.target.checked})}/><label htmlFor="pub" style={{margin:0}}>Publish now (uncheck to save as draft)</label></div>
+            <div style={{display:'flex', gap:'10px'}}>
+              <button className="btn btn-primary" onClick={submit}>{editId ? 'Update Article' : 'Publish Article'}</button>
+              {editId ? <button className="btn btn-secondary" onClick={() => { setForm(EMPTY); setEditId(null); }}>Cancel</button> : null}
+            </div>
+          </div>
+
+          <h3 style={{marginBottom:'20px'}}>All Articles ({articles.length})</h3>
+          {articles.length===0 ? <p>No articles yet. Create your first one above!</p> :
+            <table><thead><tr><th>Title</th><th>Category</th><th>Status</th><th>Views</th><th>Actions</th></tr></thead>
+              <tbody>{articles.map(a => (<tr key={a.id}>
+                <td>{a.title}</td><td>{a.category}</td><td>{a.published ? '✓ Published' : 'Draft'}</td><td>{a.views}</td>
+                <td><button className="btn btn-secondary" style={{padding:'5px 10px', marginRight:'6px'}} onClick={() => edit(a)}>Edit</button>
+                <button className="btn btn-danger" style={{padding:'5px 10px'}} onClick={() => del(a.id)}>Delete</button></td>
+              </tr>))}</tbody></table>}
+        </div>}
+
+        {tab==='settings' && <div style={{maxWidth:'600px'}}>
+          <h3 style={{marginBottom:'20px'}}>Site Settings</h3>
+          <div className="form-group"><label>Site Name</label><input type="text" value={settings.siteName||''} onChange={e => setSettings({...settings, siteName:e.target.value})}/></div>
+          <div className="form-group"><label>Site Description</label><textarea style={{minHeight:'80px'}} value={settings.siteDescription||''} onChange={e => setSettings({...settings, siteDescription:e.target.value})}></textarea></div>
+          <div className="form-group"><label>Google AdSense ID (add later)</label><input type="text" value={settings.adsenseId||''} onChange={e => setSettings({...settings, adsenseId:e.target.value})} placeholder="ca-pub-xxxxxxxxxxxxxxxx"/></div>
+          <button className="btn btn-primary" onClick={saveSettings}>Save Settings</button>
+        </div>}
+      </div></div></main>);
+    }
+
+    function StaticPage({ title, children, go }) {
+      return (<main><div className="container"><div className="article-detail">
+        <span className="back-link" onClick={() => go('home')}>← Back to Home</span>
+        <h1>{title}</h1>
+        <div className="article-body">{children}</div>
+      </div></div></main>);
+    }
+
+    function AboutPage({ go }) {
+      return (<StaticPage title="About glitchory" go={go}>
+{`glitchory is an independent publication covering technology and gaming. We share news, hands-on impressions, and practical reviews aimed at helping readers stay informed about the products and trends shaping both industries.
+
+Our coverage spans consumer tech, hardware, software, and the games people are playing right now. Every article is written and edited by our small team, and we focus on clear, useful writing over hype.
+
+If you'd like to get in touch about a story, a correction, or a partnership, head to our Contact page.`}
+      </StaticPage>);
+    }
+
+    function ContactPage({ go }) {
+      return (<StaticPage title="Contact Us" go={go}>
+{`We'd love to hear from you.
+
+For general enquiries, story tips, corrections, or advertising questions, email us at:
+
+  hello@glitchory.com
+
+We read every message and aim to reply within a few business days.`}
+      </StaticPage>);
+    }
+
+    function PrivacyPage({ go }) {
+      return (<StaticPage title="Privacy Policy" go={go}>
+{`Last updated: 2026
+
+This Privacy Policy explains how glitchory ("we", "us") handles information when you visit our website.
+
+Information we collect
+We do not require you to create an account or submit personal information to read our content. We may collect standard, non-identifying technical data such as browser type, device, and pages visited, through analytics and advertising tools.
+
+Cookies
+Our site uses cookies and similar technologies to understand how visitors use the site and to display advertising.
+
+Advertising and third parties
+We use Google AdSense to display ads. Third-party vendors, including Google, use cookies to serve ads based on a user's prior visits to this and other websites. Google's use of advertising cookies enables it and its partners to serve ads to you based on your visits to our site and/or other sites on the internet.
+
+You may opt out of personalised advertising by visiting Google's Ads Settings (https://www.google.com/settings/ads). For more information about how Google uses data, see https://policies.google.com/technologies/partner-sites. You can also visit https://www.aboutads.info to opt out of third-party vendor cookies for personalised advertising where available.
+
+Your choices
+Most browsers let you refuse or delete cookies through their settings. Disabling cookies may affect how parts of the site function.
+
+Children's privacy
+This site is not directed at children under 13, and we do not knowingly collect personal information from them.
+
+Changes to this policy
+We may update this policy from time to time. Updates will be posted on this page with a revised date.
+
+Contact
+Questions about this policy can be sent to hello@glitchory.com.`}
+      </StaticPage>);
+    }
+
+    function App() {
+      const [page, setPage] = useState('home');
+      const [slug, setSlug] = useState(null);
+      const [showAdmin, setShowAdmin] = useState(false);
+      const [adminKey, setAdminKey] = useState(localStorage.getItem('adminKey') || null);
+
+      const go = (p) => { setPage(p); setSlug(null); };
+      const openArticle = (s) => { setSlug(s); setPage('detail'); };
+      const login = (k) => { localStorage.setItem('adminKey', k); setAdminKey(k); };
+      const logout = () => { localStorage.removeItem('adminKey'); setAdminKey(null); setShowAdmin(false); go('home'); };
+
+      let content;
+      if (showAdmin) content = adminKey ? <AdminPanel adminKey={adminKey} onLogout={logout}/> : <AdminLogin onLogin={login}/>;
+      else if (page==='home') content = <HomePage go={go} openArticle={openArticle}/>;
+      else if (page==='detail') content = <ArticleDetail slug={slug} go={go}/>;
+      else if (page==='about') content = <AboutPage go={go}/>;
+      else if (page==='contact') content = <ContactPage go={go}/>;
+      else if (page==='privacy') content = <PrivacyPage go={go}/>;
+      else content = <ArticlesPage openArticle={openArticle}/>;
+
+      return (<div>
+        <Header go={go} showAdmin={showAdmin} setShowAdmin={setShowAdmin}/>
+        {content}
+        <footer><div className="container">
+          <div style={{display:'flex', gap:'20px', justifyContent:'center', marginBottom:'12px', flexWrap:'wrap'}}>
+            <a style={{color:'#bbb', cursor:'pointer'}} onClick={() => { setShowAdmin(false); go('about'); }}>About</a>
+            <a style={{color:'#bbb', cursor:'pointer'}} onClick={() => { setShowAdmin(false); go('contact'); }}>Contact</a>
+            <a style={{color:'#bbb', cursor:'pointer'}} onClick={() => { setShowAdmin(false); go('privacy'); }}>Privacy Policy</a>
+          </div>
+          <p>&copy; 2026 glitchory. All rights reserved.</p>
+        </div></footer>
+      </div>);
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
