@@ -1,6 +1,6 @@
 {
   "name": "glitchory",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "glitchory - tech and gaming news site",
   "main": "server.js",
   "type": "module",
@@ -12,7 +12,9 @@
     "@babel/preset-react": "^7.29.7",
     "cors": "^2.8.5",
     "express": "^4.18.2",
-    "mongodb": "^6.10.0"
+    "google-auth-library": "^9.14.0",
+    "mongodb": "^6.10.0",
+    "supertest": "^7.2.2"
   },
   "engines": {
     "node": ">=16.0.0"

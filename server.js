@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { MongoClient } from 'mongodb';
+import { OAuth2Client } from 'google-auth-library';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -13,8 +14,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_KEY = process.env.ADMIN_KEY || 'admin123';
 const MONGODB_URI = process.env.MONGODB_URI || '';   // set this on your host
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';  // for comment sign-in
 const DB_NAME = 'glitchory';
 // ============================================
+
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 const DEFAULT_CATEGORIES = [
   { id: 1, name: 'Tech News', slug: 'tech-news', description: 'Latest technology updates' },
@@ -24,6 +28,7 @@ const DEFAULT_CATEGORIES = [
 
 let db = null;          // MongoDB database handle
 let articlesCol = null;
+let commentsCol = null;
 let metaCol = null;     // stores settings + the id counter
 
 function slugify(title) {
@@ -47,6 +52,7 @@ async function connectDB() {
   await client.db(DB_NAME).command({ ping: 1 });   // confirm the connection actually works
   db = client.db(DB_NAME);
   articlesCol = db.collection('articles');
+  commentsCol = db.collection('comments');
   metaCol = db.collection('meta');
 
   // Seed the id counter if missing
@@ -133,6 +139,57 @@ app.get('/api/articles/:slug', async (req, res) => {
   await articlesCol.updateOne({ id: article.id }, { $inc: { views: 1 } });
   article.views = (article.views || 0) + 1;
   res.json(article);
+});
+
+// Public config the frontend needs (Google client ID is public by design)
+app.get('/api/config', (req, res) => {
+  res.json({ googleClientId: GOOGLE_CLIENT_ID });
+});
+
+// ---------- COMMENTS ----------
+
+app.get('/api/articles/:slug/comments', async (req, res) => {
+  if (!(await dbReady(res))) return;
+  const list = await commentsCol.find({ slug: req.params.slug }).sort({ created_at: -1 }).toArray();
+  // Never expose the Google user id (sub) publicly
+  res.json(list.map(c => ({ id: c.id, name: c.name, picture: c.picture, text: c.text, created_at: c.created_at })));
+});
+
+app.post('/api/articles/:slug/comments', async (req, res) => {
+  if (!(await dbReady(res))) return;
+  if (!GOOGLE_CLIENT_ID) return res.status(503).json({ error: 'Comments are not set up yet (GOOGLE_CLIENT_ID missing).' });
+
+  const { credential, text } = req.body;
+  if (!credential) return res.status(401).json({ error: 'Please sign in with Google to comment.' });
+  if (!text || !text.trim()) return res.status(400).json({ error: 'Comment cannot be empty.' });
+  if (text.length > 2000) return res.status(400).json({ error: 'Comment is too long (2000 char max).' });
+
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
+    payload = ticket.getPayload();
+  } catch (e) {
+    return res.status(401).json({ error: 'Your sign-in could not be verified. Please sign in again.' });
+  }
+
+  const id = await nextId();
+  const comment = {
+    id,
+    slug: req.params.slug,
+    name: payload.name || 'Anonymous',
+    picture: payload.picture || '',
+    sub: payload.sub,            // stored privately for moderation, never sent to public
+    text: text.trim(),
+    created_at: new Date().toISOString()
+  };
+  await commentsCol.insertOne(comment);
+  res.json({ id: comment.id, name: comment.name, picture: comment.picture, text: comment.text, created_at: comment.created_at });
+});
+
+app.delete('/admin/comments/:id', requireAuth, async (req, res) => {
+  if (!(await dbReady(res))) return;
+  await commentsCol.deleteOne({ id: parseInt(req.params.id) });
+  res.json({ message: 'Comment deleted' });
 });
 
 // ---------- ADMIN API ----------

@@ -7,6 +7,8 @@
   <title>glitchory</title>
   <!-- Google AdSense (needed for the site review) -->
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2286202749889925" crossorigin="anonymous"></script>
+  <!-- Google Sign-In (for comments) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -80,7 +82,7 @@
   <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
   <script type="text/babel" data-presets="react">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
 
     function api(path, opts) {
       return fetch(path, opts).then(async r => {
@@ -177,10 +179,104 @@
       return (<main><div className="container"><div className="article-detail">
         <span className="back-link" onClick={() => go('articles')}>← Back to News</span>
         <h1>{article.title}</h1>
-        <div className="meta"><span>{article.category}</span><span>{new Date(article.created_at).toLocaleDateString()}</span><span>{article.views} views</span></div>
+        <div className="meta"><span>{article.category}</span><span>{new Date(article.created_at).toLocaleDateString()}</span></div>
         {article.featured_image ? <img src={article.featured_image} className="feat" alt={article.title}/> : null}
         <div className="article-body">{article.content}</div>
+        <Comments slug={article.slug}/>
       </div></div></main>);
+    }
+
+    function Comments({ slug }) {
+      const [comments, setComments] = useState([]);
+      const [text, setText] = useState('');
+      const [credential, setCredential] = useState(null);
+      const [user, setUser] = useState(null);
+      const [clientId, setClientId] = useState(null);
+      const [msg, setMsg] = useState('');
+      const btnRef = useRef(null);
+      const adminKey = localStorage.getItem('adminKey');
+
+      const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3500); };
+      const loadComments = () => api('/api/articles/' + slug + '/comments').then(d => setComments(Array.isArray(d) ? d : [])).catch(() => {});
+
+      useEffect(() => { loadComments(); }, [slug]);
+      useEffect(() => { api('/api/config').then(c => setClientId(c.googleClientId)).catch(() => {}); }, []);
+
+      useEffect(() => {
+        if (!clientId || user) return;
+        let iv;
+        const tryInit = () => {
+          if (window.google && window.google.accounts && window.google.accounts.id && btnRef.current) {
+            window.google.accounts.id.initialize({
+              client_id: clientId,
+              callback: (resp) => {
+                setCredential(resp.credential);
+                try {
+                  const p = JSON.parse(atob(resp.credential.split('.')[1]));
+                  setUser({ name: p.name, picture: p.picture });
+                } catch (e) { setUser({ name: 'You', picture: '' }); }
+              }
+            });
+            window.google.accounts.id.renderButton(btnRef.current, { theme: 'outline', size: 'large' });
+            return true;
+          }
+          return false;
+        };
+        if (!tryInit()) { iv = setInterval(() => { if (tryInit()) clearInterval(iv); }, 300); }
+        return () => { if (iv) clearInterval(iv); };
+      }, [clientId, user]);
+
+      const post = () => {
+        if (!text.trim()) return;
+        api('/api/articles/' + slug + '/comments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential, text })
+        }).then(() => { setText(''); flash('✓ Comment posted'); loadComments(); })
+          .catch(e => flash('✗ ' + e.message));
+      };
+
+      const del = (id) => {
+        if (!confirm('Delete this comment?')) return;
+        api('/admin/comments/' + id, { method: 'DELETE', headers: { 'x-admin-key': adminKey } })
+          .then(() => { flash('✓ Comment deleted'); loadComments(); })
+          .catch(e => flash('✗ ' + e.message));
+      };
+
+      return (
+        <div style={{marginTop:'40px', borderTop:'2px solid #eee', paddingTop:'30px'}}>
+          <h3 style={{marginBottom:'20px'}}>Comments ({comments.length})</h3>
+          {msg ? <div className={'alert ' + (msg[0]==='✗' ? 'alert-error':'alert-success')}>{msg}</div> : null}
+
+          {!clientId
+            ? <p style={{color:'#888', marginBottom:'24px'}}>Sign-in for comments isn't set up yet.</p>
+            : user
+              ? <div style={{marginBottom:'28px'}}>
+                  <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px'}}>
+                    {user.picture ? <img src={user.picture} alt="" style={{width:'32px', height:'32px', borderRadius:'50%'}}/> : null}
+                    <span>Commenting as <strong>{user.name}</strong></span>
+                  </div>
+                  <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Write a comment..." style={{minHeight:'90px'}}></textarea>
+                  <button className="btn btn-primary" style={{marginTop:'10px'}} onClick={post}>Post Comment</button>
+                </div>
+              : <div style={{marginBottom:'28px'}}>
+                  <p style={{marginBottom:'10px', color:'#555'}}>Sign in with Google to leave a comment:</p>
+                  <div ref={btnRef}></div>
+                </div>}
+
+          {comments.length === 0
+            ? <p style={{color:'#888'}}>No comments yet. Be the first!</p>
+            : comments.map(c => (
+                <div key={c.id} style={{borderTop:'1px solid #eee', padding:'14px 0', display:'flex', gap:'12px'}}>
+                  {c.picture ? <img src={c.picture} alt="" style={{width:'36px', height:'36px', borderRadius:'50%'}}/> : null}
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:600}}>{c.name} <span style={{fontWeight:400, color:'#999', fontSize:'12px', marginLeft:'6px'}}>{new Date(c.created_at).toLocaleDateString()}</span></div>
+                    <div style={{whiteSpace:'pre-wrap'}}>{c.text}</div>
+                  </div>
+                  {adminKey ? <button className="btn btn-danger" style={{padding:'2px 9px', fontSize:'14px', height:'fit-content'}} onClick={() => del(c.id)} title="Delete (admin)">×</button> : null}
+                </div>))}
+        </div>
+      );
     }
 
     function AdminLogin({ onLogin }) {
