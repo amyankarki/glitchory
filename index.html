@@ -43,7 +43,21 @@
     .article-detail h1 { font-size: 38px; margin-bottom: 20px; line-height: 1.2; }
     .article-detail .meta { display: flex; gap: 20px; font-size: 14px; color: #666; margin-bottom: 30px; }
     .article-detail img.feat { width: 100%; max-height: 450px; object-fit: cover; border-radius: 8px; margin-bottom: 30px; }
-    .article-body { font-size: 17px; line-height: 1.8; color: #333; white-space: pre-wrap; }
+    .article-body { font-size: 17px; line-height: 1.8; color: #333; overflow-wrap: break-word; word-wrap: break-word; }
+    .article-body p { margin-bottom: 1.1em; }
+    .article-body h1, .article-body h2, .article-body h3, .article-body h4 { margin: 1.4em 0 0.5em; line-height: 1.25; }
+    .article-body h1 { font-size: 30px; }
+    .article-body h2 { font-size: 25px; }
+    .article-body h3 { font-size: 20px; }
+    .article-body ul, .article-body ol { margin: 0 0 1.1em 1.6em; }
+    .article-body li { margin-bottom: 0.4em; }
+    .article-body a { color: #0066cc; text-decoration: underline; overflow-wrap: break-word; }
+    .article-body img { max-width: 100%; height: auto; border-radius: 8px; margin: 1em 0; }
+    .article-body blockquote { border-left: 4px solid #ddd; margin: 1em 0; padding: 4px 0 4px 1em; color: #555; }
+    .article-body code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-size: 0.92em; }
+    .article-body pre { background: #1a1a1a; color: #f5f5f5; padding: 16px; border-radius: 8px; overflow-x: auto; margin: 1em 0; }
+    .article-body pre code { background: none; padding: 0; color: inherit; }
+    .article-body hr { border: none; border-top: 1px solid #e0e0e0; margin: 1.5em 0; }
     .back-link { color: #0066cc; cursor: pointer; font-weight: 600; margin-bottom: 20px; display: inline-block; }
     .admin-panel { background: white; border-radius: 8px; padding: 30px; }
     .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #e0e0e0; padding-bottom: 20px; }
@@ -80,6 +94,7 @@
   <div id="root"></div>
   <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
   <script type="text/babel" data-presets="react">
     const { useState, useEffect, useRef } = React;
@@ -91,6 +106,22 @@
         if (!r.ok) throw new Error(body.error || ('Request failed (' + r.status + ')'));
         return body;
       });
+    }
+
+    // Turn article text into nicely formatted HTML (paragraphs, headings, bold, links, lists).
+    // Single line breaks are kept, so pasted articles look the way you typed them.
+    function renderMarkdown(text) {
+      const src = text || '';
+      try {
+        if (window.marked) {
+          const parse = window.marked.parse || window.marked;
+          if (window.marked.setOptions) window.marked.setOptions({ breaks: true, gfm: true });
+          return parse(src);
+        }
+      } catch (e) {}
+      // Fallback if the library didn't load: escape and keep line breaks
+      const esc = src.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return esc.replace(/\n/g, '<br>');
     }
 
     function Header({ go, setShowAdmin }) {
@@ -180,7 +211,7 @@
         <h1>{article.title}</h1>
         <div className="meta"><span>{article.category}</span><span>{new Date(article.created_at).toLocaleDateString()}</span></div>
         {article.featured_image ? <img src={article.featured_image} className="feat" alt={article.title}/> : null}
-        <div className="article-body">{article.content}</div>
+        <div className="article-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(article.content) }}></div>
         <Comments slug={article.slug}/>
       </div></div></main>);
     }
@@ -366,7 +397,7 @@
                 </select></div>
             </div>
             <div className="form-group"><label>Excerpt (short summary)</label><textarea style={{minHeight:'80px'}} value={form.excerpt} onChange={e => setForm({...form, excerpt:e.target.value})} placeholder="One or two sentences shown on the article card"></textarea></div>
-            <div className="form-group"><label>Content *</label><textarea value={form.content} onChange={e => setForm({...form, content:e.target.value})} placeholder="Write your full article here..."></textarea></div>
+            <div className="form-group"><label>Content *</label><textarea value={form.content} onChange={e => setForm({...form, content:e.target.value})} placeholder="Write your full article here..."></textarea><small style={{display:'block', marginTop:'6px', color:'#888'}}>Tip: leave a blank line between paragraphs. You can format with Markdown — <code>## Heading</code>, <code>**bold**</code>, <code>- bullet</code>, <code>[link](https://...)</code>.</small></div>
             <div className="form-group">
               <label>Featured Image / Thumbnail (optional)</label>
               <input type="text" value={form.featured_image && form.featured_image.startsWith('data:') ? '' : form.featured_image} onChange={e => setForm({...form, featured_image:e.target.value})} placeholder="Paste an image URL, or upload a file below"/>
@@ -417,7 +448,7 @@
       return (<main><div className="container"><div className="article-detail">
         <span className="back-link" onClick={() => go('home')}>← Back to Home</span>
         <h1>{title}</h1>
-        <div className="article-body">{children}</div>
+        <div className="article-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(typeof children === 'string' ? children : '') }}></div>
       </div></div></main>);
     }
 
