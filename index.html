@@ -124,13 +124,13 @@
       return esc.replace(/\n/g, '<br>');
     }
 
-    function Header({ go, setShowAdmin }) {
+    function Header({ go }) {
       return (
         <header><div className="container"><div className="header-content">
-          <div className="logo" onClick={() => { go('home'); setShowAdmin(false); }}>🎮 glitchory</div>
+          <div className="logo" onClick={() => go('home')}>🎮 glitchory</div>
           <nav>
-            <a onClick={() => { go('home'); setShowAdmin(false); }}>Home</a>
-            <a onClick={() => { go('articles'); setShowAdmin(false); }}>News</a>
+            <a onClick={() => go('home')}>Home</a>
+            <a onClick={() => go('articles')}>News</a>
           </nav>
         </div></div></header>
       );
@@ -200,10 +200,26 @@
       </div></main>);
     }
 
+    function setMeta(name, content) {
+      let el = document.querySelector('meta[name="' + name + '"]');
+      if (!el) { el = document.createElement('meta'); el.setAttribute('name', name); document.head.appendChild(el); }
+      el.setAttribute('content', content || '');
+    }
+
     function ArticleDetail({ slug, go }) {
       const [article, setArticle] = useState(null);
       const [loading, setLoading] = useState(true);
-      useEffect(() => { api('/api/articles/' + slug).then(d => { setArticle(d); setLoading(false); }).catch(() => setLoading(false)); }, [slug]);
+      useEffect(() => {
+        setLoading(true);
+        api('/api/articles/' + slug).then(d => {
+          setArticle(d);
+          setLoading(false);
+          // Update tab title + meta description for this article (helps when navigating in-app)
+          document.title = d.title + ' | glitchory';
+          setMeta('description', d.meta_description || d.excerpt || d.title);
+          if (d.keywords) setMeta('keywords', d.keywords);
+        }).catch(() => setLoading(false));
+      }, [slug]);
       if (loading) return <main><div className="container"><div className="loading"><div className="spinner"></div>Loading...</div></div></main>;
       if (!article) return <main><div className="container"><p>Article not found.</p></div></main>;
       return (<main><div className="container"><div className="article-detail">
@@ -345,7 +361,7 @@
       reader.readAsDataURL(file);
     }
 
-    const EMPTY = { title:'', content:'', excerpt:'', category:'tech-news', featured_image:'', published:true };
+    const EMPTY = { title:'', content:'', excerpt:'', category:'tech-news', featured_image:'', published:true, slug:'', meta_description:'', keywords:'' };
 
     function AdminPanel({ adminKey, onLogout }) {
       const [tab, setTab] = useState('articles');
@@ -374,7 +390,7 @@
           .catch(e => flash('✗ ' + e.message));
       };
 
-      const edit = (a) => { setForm({ title:a.title, content:a.content, excerpt:a.excerpt, category:a.category, featured_image:a.featured_image, published:a.published }); setEditId(a.id); window.scrollTo(0,0); };
+      const edit = (a) => { setForm({ title:a.title, content:a.content, excerpt:a.excerpt, category:a.category, featured_image:a.featured_image, published:a.published, slug:a.slug||'', meta_description:a.meta_description||'', keywords:a.keywords||'' }); setEditId(a.id); window.scrollTo(0,0); };
       const del = (id) => { if (!confirm('Delete this article?')) return; api('/admin/articles/'+id, { method:'DELETE', headers:{'x-admin-key':adminKey} }).then(() => { flash('✓ Deleted'); load(); }).catch(e => flash('✗ '+e.message)); };
       const saveSettings = () => api('/admin/settings', { method:'POST', headers:H, body: JSON.stringify(settings) }).then(() => flash('✓ Settings saved')).catch(e => flash('✗ '+e.message));
 
@@ -416,6 +432,24 @@
                 <img src={form.featured_image} alt="preview" style={{maxHeight:'140px', borderRadius:'6px', display:'block', border:'1px solid #e0e0e0'}}/>
                 <button type="button" className="btn btn-secondary" style={{marginTop:'8px', padding:'4px 10px'}} onClick={() => setForm({...form, featured_image:''})}>Remove image</button>
               </div> : null}
+            </div>
+            <div style={{border:'1px solid #e6e6e6', borderRadius:'8px', padding:'16px 18px', marginBottom:'20px', background:'#fafafa'}}>
+              <div style={{fontWeight:700, marginBottom:'14px', color:'#0066cc'}}>SEO settings (helps you rank on Google)</div>
+              <div className="form-group">
+                <label>URL slug</label>
+                <input type="text" value={form.slug} onChange={e => setForm({...form, slug:e.target.value})} placeholder="e.g. wolverine-game-2026-everything-we-know"/>
+                <small style={{display:'block', marginTop:'6px', color:'#888'}}>Your article's web address: glitchory.com/article/<strong>{(form.slug && form.slug.trim()) ? form.slug.trim().toLowerCase().replace(/[^\w\s-]/g,'').replace(/\s+/g,'-') : 'auto-from-title'}</strong>. Leave blank to auto-generate from the title. Keep it short with your main keywords.</small>
+              </div>
+              <div className="form-group">
+                <label>Meta description</label>
+                <textarea style={{minHeight:'70px'}} value={form.meta_description} onChange={e => setForm({...form, meta_description:e.target.value})} placeholder="The 1-2 sentence summary Google shows under your title in search results. Include your main keyword."></textarea>
+                <small style={{display:'block', marginTop:'6px', color: (form.meta_description||'').length > 160 ? '#c0392b' : '#888'}}>{(form.meta_description||'').length}/160 characters{(form.meta_description||'').length > 160 ? ' — a bit long, Google may cut it off' : ''}. If left blank, your excerpt is used.</small>
+              </div>
+              <div className="form-group" style={{marginBottom:0}}>
+                <label>Target keywords</label>
+                <input type="text" value={form.keywords} onChange={e => setForm({...form, keywords:e.target.value})} placeholder="wolverine game, marvel wolverine 2026, insomniac wolverine"/>
+                <small style={{display:'block', marginTop:'6px', color:'#888'}}>Comma-separated. Most useful as a reminder to actually use these phrases in your title, first paragraph, and headings — that's what Google really reads.</small>
+              </div>
             </div>
             <div className="form-group checkbox-row"><input type="checkbox" id="pub" checked={form.published} onChange={e => setForm({...form, published:e.target.checked})}/><label htmlFor="pub" style={{margin:0}}>Publish now (uncheck to save as draft)</label></div>
             <div style={{display:'flex', gap:'10px'}}>
@@ -505,42 +539,64 @@ Questions about this policy can be sent to hello@glitchory.com.`}
       </StaticPage>);
     }
 
+    function parseRoute() {
+      const raw = window.location.pathname;
+      const m = raw.match(/^\/article\/([^\/]+)\/?$/);
+      if (m) return { view: 'detail', slug: decodeURIComponent(m[1]) };
+      const p = raw.replace(/\/+$/, '').toLowerCase();
+      if (p === '/aman') return { view: 'admin' };
+      if (p === '/news') return { view: 'articles' };
+      if (p === '/about') return { view: 'about' };
+      if (p === '/contact') return { view: 'contact' };
+      if (p === '/privacy') return { view: 'privacy' };
+      return { view: 'home' };
+    }
+
+    const PATHS = { home:'/', articles:'/news', about:'/about', contact:'/contact', privacy:'/privacy' };
+
     function App() {
-      // Secret admin entrance: only show the admin panel when the URL is /aman
-      const onAdminPath = window.location.pathname.replace(/\/+$/,'').toLowerCase() === '/aman';
-      const [page, setPage] = useState('home');
-      const [slug, setSlug] = useState(null);
-      const [showAdmin, setShowAdmin] = useState(onAdminPath);
+      const [route, setRoute] = useState(parseRoute());
       const [adminKey, setAdminKey] = useState(localStorage.getItem('adminKey') || null);
 
-      const go = (p) => { setPage(p); setSlug(null); };
-      const openArticle = (s) => { setSlug(s); setPage('detail'); };
-      const login = (k) => { localStorage.setItem('adminKey', k); setAdminKey(k); };
-      const logout = () => {
-        localStorage.removeItem('adminKey');
-        setAdminKey(null);
-        setShowAdmin(false);
-        go('home');
-        if (window.location.pathname !== '/') window.history.replaceState({}, '', '/');
-      };
+      useEffect(() => {
+        const onPop = () => setRoute(parseRoute());
+        window.addEventListener('popstate', onPop);
+        return () => window.removeEventListener('popstate', onPop);
+      }, []);
 
+      const navigate = (toPath) => {
+        if (window.location.pathname !== toPath) window.history.pushState({}, '', toPath);
+        setRoute(parseRoute());
+        window.scrollTo(0, 0);
+      };
+      const go = (view) => navigate(PATHS[view] || '/');
+      const openArticle = (s) => navigate('/article/' + s);
+      const login = (k) => { localStorage.setItem('adminKey', k); setAdminKey(k); };
+      const logout = () => { localStorage.removeItem('adminKey'); setAdminKey(null); navigate('/'); };
+
+      const v = route.view;
       let content;
-      if (showAdmin) content = adminKey ? <AdminPanel adminKey={adminKey} onLogout={logout}/> : <AdminLogin onLogin={login}/>;
-      else if (page==='home') content = <HomePage go={go} openArticle={openArticle}/>;
-      else if (page==='detail') content = <ArticleDetail slug={slug} go={go}/>;
-      else if (page==='about') content = <AboutPage go={go}/>;
-      else if (page==='contact') content = <ContactPage go={go}/>;
-      else if (page==='privacy') content = <PrivacyPage go={go}/>;
-      else content = <ArticlesPage openArticle={openArticle}/>;
+      if (v === 'admin') content = adminKey ? <AdminPanel adminKey={adminKey} onLogout={logout}/> : <AdminLogin onLogin={login}/>;
+      else if (v === 'detail') content = <ArticleDetail slug={route.slug} go={go}/>;
+      else if (v === 'about') content = <AboutPage go={go}/>;
+      else if (v === 'contact') content = <ContactPage go={go}/>;
+      else if (v === 'privacy') content = <PrivacyPage go={go}/>;
+      else if (v === 'articles') content = <ArticlesPage openArticle={openArticle}/>;
+      else content = <HomePage go={go} openArticle={openArticle}/>;
+
+      // Keep the browser tab title sensible for non-article views
+      useEffect(() => {
+        if (v !== 'detail') document.title = 'glitchory — tech & gaming news';
+      }, [v]);
 
       return (<div>
-        <Header go={go} setShowAdmin={setShowAdmin}/>
+        <Header go={go}/>
         {content}
         <footer><div className="container">
           <div style={{display:'flex', gap:'20px', justifyContent:'center', marginBottom:'12px', flexWrap:'wrap'}}>
-            <a style={{color:'#bbb', cursor:'pointer'}} onClick={() => { setShowAdmin(false); go('about'); }}>About</a>
-            <a style={{color:'#bbb', cursor:'pointer'}} onClick={() => { setShowAdmin(false); go('contact'); }}>Contact</a>
-            <a style={{color:'#bbb', cursor:'pointer'}} onClick={() => { setShowAdmin(false); go('privacy'); }}>Privacy Policy</a>
+            <a style={{color:'#bbb', cursor:'pointer'}} onClick={() => go('about')}>About</a>
+            <a style={{color:'#bbb', cursor:'pointer'}} onClick={() => go('contact')}>Contact</a>
+            <a style={{color:'#bbb', cursor:'pointer'}} onClick={() => go('privacy')}>Privacy Policy</a>
           </div>
           <p>&copy; 2026 glitchory. All rights reserved.</p>
         </div></footer>

@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { MongoClient } from 'mongodb';
 import { OAuth2Client } from 'google-auth-library';
@@ -15,6 +16,7 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_KEY = process.env.ADMIN_KEY || 'admin123';
 const MONGODB_URI = process.env.MONGODB_URI || '';   // set this on your host
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';  // for comment sign-in
+const SITE_URL = (process.env.SITE_URL || 'https://glitchory.com').replace(/\/+$/, '');
 const DB_NAME = 'glitchory';
 // ============================================
 
@@ -32,10 +34,26 @@ let commentsCol = null;
 let metaCol = null;     // stores settings + the id counter
 
 function slugify(title) {
-  return title.toLowerCase().trim()
+  return (title || '').toLowerCase().trim()
     .replace(/[^\w\s-]/g, '')
     .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Produce a clean, unique slug (e.g. "the-new-gpu", then "-2", "-3" only on collision)
+async function uniqueSlug(base, excludeId) {
+  let root = slugify(base) || 'post';
+  let candidate = root, n = 2;
+  while (true) {
+    const existing = await articlesCol.findOne({ slug: candidate });
+    if (!existing || existing.id === excludeId) return candidate;
+    candidate = root + '-' + n; n++;
+  }
 }
 
 async function connectDB() {
@@ -202,16 +220,18 @@ app.get('/admin/articles', requireAuth, async (req, res) => {
 
 app.post('/admin/articles', requireAuth, async (req, res) => {
   if (!(await dbReady(res))) return;
-  const { title, content, excerpt, category, featured_image, published } = req.body;
+  const { title, content, excerpt, category, featured_image, published, meta_description, keywords, slug } = req.body;
   if (!title || !content) return res.status(400).json({ error: 'Title and content are required' });
 
   const id = await nextId();
   const article = {
     id,
     title,
-    slug: slugify(title) + '-' + id,
+    slug: await uniqueSlug(slug || title, id),
     content,
     excerpt: excerpt || '',
+    meta_description: meta_description || '',
+    keywords: keywords || '',
     category: category || 'tech-news',
     featured_image: featured_image || '',
     author: 'Admin',
@@ -221,7 +241,7 @@ app.post('/admin/articles', requireAuth, async (req, res) => {
     updated_at: new Date().toISOString()
   };
   await articlesCol.insertOne(article);
-  res.json({ message: 'Article created', id });
+  res.json({ message: 'Article created', id, slug: article.slug });
 });
 
 app.put('/admin/articles/:id', requireAuth, async (req, res) => {
@@ -230,19 +250,25 @@ app.put('/admin/articles/:id', requireAuth, async (req, res) => {
   const existing = await articlesCol.findOne({ id });
   if (!existing) return res.status(404).json({ error: 'Not found' });
 
-  const { title, content, excerpt, category, featured_image, published } = req.body;
+  const { title, content, excerpt, category, featured_image, published, meta_description, keywords, slug } = req.body;
+  // Keep the slug stable by default (good for SEO). Only change it if the user typed a new custom slug.
+  let newSlug = existing.slug;
+  if (slug && slugify(slug) !== existing.slug) newSlug = await uniqueSlug(slug, id);
+
   const update = {
     title: title ?? existing.title,
-    slug: title ? slugify(title) + '-' + id : existing.slug,
+    slug: newSlug,
     content: content ?? existing.content,
     excerpt: excerpt ?? existing.excerpt,
+    meta_description: meta_description ?? existing.meta_description ?? '',
+    keywords: keywords ?? existing.keywords ?? '',
     category: category ?? existing.category,
     featured_image: featured_image ?? existing.featured_image,
     published: !!published,
     updated_at: new Date().toISOString()
   };
   await articlesCol.updateOne({ id }, { $set: update });
-  res.json({ message: 'Article updated' });
+  res.json({ message: 'Article updated', slug: newSlug });
 });
 
 app.delete('/admin/articles/:id', requireAuth, async (req, res) => {
@@ -271,6 +297,63 @@ app.get('/health', (req, res) => res.json({ status: 'ok', db: !!articlesCol }));
 // ads.txt tells ad networks you authorize Google to sell ads on your domain
 app.get('/ads.txt', (req, res) => {
   res.type('text/plain').send('google.com, pub-2286202749889925, DIRECT, f08c47fec0942fa0\n');
+});
+
+// robots.txt — points crawlers to the sitemap
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send('User-agent: *\nAllow: /\nSitemap: ' + SITE_URL + '/sitemap.xml\n');
+});
+
+// sitemap.xml — lists every page so Google can discover and index them
+app.get('/sitemap.xml', async (req, res) => {
+  const urls = [SITE_URL + '/', SITE_URL + '/news', SITE_URL + '/about', SITE_URL + '/contact', SITE_URL + '/privacy'];
+  if (await ensureDB()) {
+    const arts = await articlesCol.find({ published: true }).sort({ created_at: -1 }).toArray();
+    for (const a of arts) urls.push(SITE_URL + '/article/' + a.slug);
+  }
+  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    urls.map(u => '  <url><loc>' + escapeHtml(u) + '</loc></url>').join('\n') +
+    '\n</urlset>\n';
+  res.type('application/xml').send(xml);
+});
+
+// Read the HTML shell once and cache it
+let htmlShell = null;
+function getHtmlShell() {
+  if (!htmlShell) htmlShell = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  return htmlShell;
+}
+
+// Article pages: inject real title + meta description + keywords + social tags
+// so Google and social scrapers see the right info even without running JS.
+app.get('/article/:slug', async (req, res) => {
+  let html = getHtmlShell();
+  try {
+    if (await ensureDB()) {
+      const a = await articlesCol.findOne({ slug: req.params.slug, published: true });
+      if (a) {
+        const title = escapeHtml(a.title + ' | glitchory');
+        const desc = escapeHtml((a.meta_description || a.excerpt || a.title).slice(0, 300));
+        const url = SITE_URL + '/article/' + a.slug;
+        const ogImage = (a.featured_image && !a.featured_image.startsWith('data:')) ? a.featured_image : '';
+        let head = '<title>' + title + '</title>';
+        head += '\n  <meta name="description" content="' + desc + '">';
+        if (a.keywords) head += '\n  <meta name="keywords" content="' + escapeHtml(a.keywords) + '">';
+        head += '\n  <link rel="canonical" href="' + escapeHtml(url) + '">';
+        head += '\n  <meta property="og:type" content="article">';
+        head += '\n  <meta property="og:title" content="' + escapeHtml(a.title) + '">';
+        head += '\n  <meta property="og:description" content="' + desc + '">';
+        head += '\n  <meta property="og:url" content="' + escapeHtml(url) + '">';
+        if (ogImage) head += '\n  <meta property="og:image" content="' + escapeHtml(ogImage) + '">';
+        head += '\n  <meta name="twitter:card" content="' + (ogImage ? 'summary_large_image' : 'summary') + '">';
+        // Replace the default <title> and the default description with the article's
+        html = html
+          .replace(/<title>[\s\S]*?<\/title>/, head)
+          .replace(/<meta name="description"[^>]*>/, '');
+      }
+    }
+  } catch (e) { /* fall back to the plain shell */ }
+  res.type('html').send(html);
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
