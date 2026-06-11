@@ -206,7 +206,22 @@
       el.setAttribute('content', content || '');
     }
 
-    function ArticleDetail({ slug, go }) {
+    function RelatedArticles({ slug, openArticle }) {
+      const [items, setItems] = useState([]);
+      useEffect(() => {
+        setItems([]);
+        api('/api/articles/' + slug + '/related?limit=3').then(d => setItems(Array.isArray(d) ? d : [])).catch(() => {});
+      }, [slug]);
+      if (items.length === 0) return null;
+      return (
+        <div style={{marginTop:'40px', borderTop:'2px solid #eee', paddingTop:'30px'}}>
+          <h3 style={{marginBottom:'20px'}}>Related Articles</h3>
+          <div className="articles-grid">{items.map(a => <ArticleCard key={a.id} a={a} openArticle={openArticle}/>)}</div>
+        </div>
+      );
+    }
+
+    function ArticleDetail({ slug, go, openArticle }) {
       const [article, setArticle] = useState(null);
       const [loading, setLoading] = useState(true);
       useEffect(() => {
@@ -214,7 +229,6 @@
         api('/api/articles/' + slug).then(d => {
           setArticle(d);
           setLoading(false);
-          // Update tab title + meta description for this article (helps when navigating in-app)
           document.title = d.title + ' | glitchory';
           setMeta('description', d.meta_description || d.excerpt || d.title);
           if (d.keywords) setMeta('keywords', d.keywords);
@@ -228,6 +242,7 @@
         <div className="meta"><span>{article.category}</span><span>{new Date(article.created_at).toLocaleDateString()}</span></div>
         {article.featured_image ? <img src={article.featured_image} className="feat" alt={article.title}/> : null}
         <div className="article-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(article.content) }}></div>
+        <RelatedArticles slug={article.slug} openArticle={openArticle}/>
         <Comments slug={article.slug}/>
       </div></div></main>);
     }
@@ -577,7 +592,7 @@ Questions about this policy can be sent to hello@glitchory.com.`}
       const v = route.view;
       let content;
       if (v === 'admin') content = adminKey ? <AdminPanel adminKey={adminKey} onLogout={logout}/> : <AdminLogin onLogin={login}/>;
-      else if (v === 'detail') content = <ArticleDetail slug={route.slug} go={go}/>;
+      else if (v === 'detail') content = <ArticleDetail slug={route.slug} go={go} openArticle={openArticle}/>;
       else if (v === 'about') content = <AboutPage go={go}/>;
       else if (v === 'contact') content = <ContactPage go={go}/>;
       else if (v === 'privacy') content = <PrivacyPage go={go}/>;

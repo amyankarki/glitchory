@@ -56,6 +56,34 @@ async function uniqueSlug(base, excludeId) {
   }
 }
 
+// ---------- Related-article recommendation ----------
+const STOPWORDS = new Set(('the a an and or but of to in on for with is are was were be been this that it its as at by from how what why when ' +
+  'your you we our us they them he she his her their i my me will would can could should has have had do does did not no yes new best top ' +
+  'about into over under out up down off than then them too very just more most some any all also got get one two three').split(' '));
+
+function tokenize(text) {
+  return (String(text || '').toLowerCase().match(/[a-z0-9]+/g) || []).filter(t => t.length >= 3 && !STOPWORDS.has(t));
+}
+
+// Weighted bag of words for an article (title and keywords matter most)
+function articleTokens(a) {
+  const w = {};
+  const add = (text, weight) => { for (const t of tokenize(text)) w[t] = (w[t] || 0) + weight; };
+  add(a.title, 3);
+  add(a.keywords, 3);
+  add(a.excerpt, 1);
+  return w;
+}
+
+// Similarity score between two articles
+function similarity(current, ct, other) {
+  let s = 0;
+  if (current.category && current.category === other.category) s += 4;  // same category = strong signal
+  const ot = articleTokens(other);
+  for (const t in ct) if (ot[t]) s += Math.min(ct[t], ot[t]);           // shared weighted words
+  return s;
+}
+
 async function connectDB() {
   if (!MONGODB_URI) {
     console.log('');
@@ -165,6 +193,25 @@ app.get('/api/config', (req, res) => {
 });
 
 // ---------- COMMENTS ----------
+
+app.get('/api/articles/:slug/related', async (req, res) => {
+  if (!(await dbReady(res))) return;
+  const limit = Math.min(parseInt(req.query.limit) || 3, 8);
+  const current = await articlesCol.findOne({ slug: req.params.slug, published: true });
+  if (!current) return res.json([]);
+
+  const others = (await articlesCol.find({ published: true }).toArray()).filter(a => a.id !== current.id);
+  const ct = articleTokens(current);
+  const scored = others.map(a => ({ a, s: similarity(current, ct, a) }));
+  // Best matches first; ties (or all-zero) fall back to newest
+  scored.sort((x, y) => y.s - x.s || new Date(y.a.created_at) - new Date(x.a.created_at));
+
+  const top = scored.slice(0, limit).map(({ a }) => ({
+    id: a.id, title: a.title, slug: a.slug, excerpt: a.excerpt,
+    category: a.category, featured_image: a.featured_image, created_at: a.created_at
+  }));
+  res.json(top);
+});
 
 app.get('/api/articles/:slug/comments', async (req, res) => {
   if (!(await dbReady(res))) return;
