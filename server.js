@@ -45,6 +45,174 @@ function escapeHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ============================================
+//  SERVER-SIDE RENDERING (for SEO / crawlers)
+//  The browser still uses React + marked.js for the rich, interactive version.
+//  These helpers put REAL, readable content into the first HTML response so
+//  Google, AdSense and social scrapers don't see an empty page. React clears
+//  #root and takes over the moment it loads, so users get the normal app —
+//  and if the scripts ever fail to load, visitors still see the article
+//  instead of a blank screen.
+// ============================================
+
+// Minimal, safe Markdown -> HTML. Escapes everything first (no HTML injection),
+// then re-adds basic structure. Good enough for crawlers; the client renders the
+// pretty version with marked.js.
+function inlineMd(s) {
+  s = escapeHtml(s);
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, t, u) => '<a href="' + u + '" rel="noopener">' + t + '</a>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  return s;
+}
+
+function renderMarkdownServer(text) {
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+  let html = '', i = 0, para = [];
+  const flush = () => { if (para.length) { html += '<p>' + para.map(inlineMd).join('<br>') + '</p>\n'; para = []; } };
+  while (i < lines.length) {
+    const line = lines[i], t = line.trim();
+    if (t === '') { flush(); i++; continue; }
+    const h = t.match(/^(#{1,4})\s+(.*)$/);
+    if (h) { flush(); const l = h[1].length; html += '<h' + l + '>' + inlineMd(h[2]) + '</h' + l + '>\n'; i++; continue; }
+    if (/^>\s?/.test(t)) { flush(); html += '<blockquote>' + inlineMd(t.replace(/^>\s?/, '')) + '</blockquote>\n'; i++; continue; }
+    if (/^[-*]\s+/.test(t)) { flush(); html += '<ul>\n'; while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) { html += '<li>' + inlineMd(lines[i].trim().replace(/^[-*]\s+/, '')) + '</li>\n'; i++; } html += '</ul>\n'; continue; }
+    if (/^\d+\.\s+/.test(t)) { flush(); html += '<ol>\n'; while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) { html += '<li>' + inlineMd(lines[i].trim().replace(/^\d+\.\s+/, '')) + '</li>\n'; i++; } html += '</ol>\n'; continue; }
+    para.push(line); i++;
+  }
+  flush();
+  return html;
+}
+
+function isRealImage(src) { return src && !src.startsWith('data:'); }
+function dateOnly(d) { try { return new Date(d).toISOString().slice(0, 10); } catch { return ''; } }
+
+// A lightweight static header + footer with REAL links, so crawlers can follow
+// internal links and no-JS visitors can still navigate.
+function staticChrome(inner) {
+  return '<header><div class="container"><div class="header-content">'
+    + '<a class="logo" href="/" style="text-decoration:none;color:inherit">\u{1F3AE} glitchory</a>'
+    + '<nav><a href="/">Home</a><a href="/news">News</a></nav>'
+    + '</div></div></header>'
+    + inner
+    + '<footer><div class="container">'
+    + '<div style="display:flex;gap:20px;justify-content:center;margin-bottom:12px;flex-wrap:wrap">'
+    + '<a style="color:#bbb" href="/about">About</a>'
+    + '<a style="color:#bbb" href="/contact">Contact</a>'
+    + '<a style="color:#bbb" href="/privacy">Privacy Policy</a>'
+    + '</div><p>&copy; 2026 glitchory. All rights reserved.</p></div></footer>';
+}
+
+// Article card as a real <a href> link (crawlable + works without JS).
+function cardHtml(a) {
+  const img = isRealImage(a.featured_image)
+    ? '<img src="' + escapeHtml(a.featured_image) + '" class="article-image" alt="' + escapeHtml(a.title) + '">' : '';
+  return '<a class="article-card" href="/article/' + escapeHtml(a.slug) + '" style="display:block;text-decoration:none;color:inherit">'
+    + img
+    + '<div class="article-content">'
+    + '<div class="article-meta"><span class="article-category">' + escapeHtml(a.category || '') + '</span><span>' + dateOnly(a.created_at) + '</span></div>'
+    + '<h3>' + escapeHtml(a.title) + '</h3>'
+    + '<p>' + escapeHtml(a.excerpt || '') + '</p>'
+    + '<span class="read-more">Read More \u2192</span>'
+    + '</div></a>';
+}
+
+// Full server-rendered article page body.
+function articleSeoHtml(a) {
+  const img = isRealImage(a.featured_image)
+    ? '<img src="' + escapeHtml(a.featured_image) + '" class="feat" alt="' + escapeHtml(a.title) + '">' : '';
+  return '<main><div class="container"><div class="article-detail">'
+    + '<a class="back-link" href="/news">\u2190 Back to News</a>'
+    + '<h1>' + escapeHtml(a.title) + '</h1>'
+    + '<div class="meta"><span>' + escapeHtml(a.category || '') + '</span><span>' + dateOnly(a.created_at) + '</span></div>'
+    + img
+    + '<div class="article-body">' + renderMarkdownServer(a.content) + '</div>'
+    + '</div></div></main>';
+}
+
+// Server-rendered list page (home / news).
+function listSeoHtml(articles, heading, intro) {
+  return '<main><div class="container">'
+    + (intro ? '<div class="hero"><h1>glitchory</h1><p>' + escapeHtml(intro) + '</p></div>' : '')
+    + '<h2 style="margin-bottom:24px">' + escapeHtml(heading) + '</h2>'
+    + (articles.length ? '<div class="articles-grid">' + articles.map(cardHtml).join('\n') + '</div>'
+                       : '<p>No articles published yet.</p>')
+    + '</div></main>';
+}
+
+// Server-rendered simple text page (about / contact / privacy).
+function staticPageSeoHtml(title, body) {
+  return '<main><div class="container"><div class="article-detail">'
+    + '<a class="back-link" href="/">\u2190 Back to Home</a>'
+    + '<h1>' + escapeHtml(title) + '</h1>'
+    + '<div class="article-body">' + renderMarkdownServer(body) + '</div>'
+    + '</div></div></main>';
+}
+
+// Build a <head> block (title + description + canonical + Open Graph + Twitter).
+function buildHead({ title, desc, canonical, image, type, extra }) {
+  let h = '<title>' + escapeHtml(title) + '</title>';
+  h += '\n  <meta name="description" content="' + escapeHtml(desc) + '">';
+  if (canonical) h += '\n  <link rel="canonical" href="' + escapeHtml(canonical) + '">';
+  h += '\n  <meta property="og:type" content="' + (type || 'website') + '">';
+  h += '\n  <meta property="og:site_name" content="glitchory">';
+  h += '\n  <meta property="og:title" content="' + escapeHtml(title) + '">';
+  h += '\n  <meta property="og:description" content="' + escapeHtml(desc) + '">';
+  if (canonical) h += '\n  <meta property="og:url" content="' + escapeHtml(canonical) + '">';
+  if (image) h += '\n  <meta property="og:image" content="' + escapeHtml(image) + '">';
+  h += '\n  <meta name="twitter:card" content="' + (image ? 'summary_large_image' : 'summary') + '">';
+  if (extra) h += '\n  ' + extra;
+  return h;
+}
+
+function jsonLd(obj) {
+  return '<script type="application/ld+json">' + JSON.stringify(obj).replace(/</g, '\\u003c') + '</script>';
+}
+
+// Swap the shell's default <title> + description for page-specific ones,
+// and inject server-rendered content into #root.
+function applyHead(html, headHtml) {
+  return html
+    .replace(/<title>[\s\S]*?<\/title>/, headHtml)
+    .replace(/<meta name="description"[^>]*>/, '');
+}
+function injectRoot(html, inner) {
+  return html.replace('<div id="root"></div>', '<div id="root">' + inner + '</div>');
+}
+
+// Static page copy (kept in sync with the React components in index.html).
+const ABOUT_TEXT = `glitchory is an independent publication covering technology and gaming. We share news, hands-on impressions, and practical reviews aimed at helping readers stay informed about the products and trends shaping both industries.
+
+Our coverage spans consumer tech, hardware, software, and the games people are playing right now. Every article is written and edited by our small team, and we focus on clear, useful writing over hype.
+
+If you'd like to get in touch about a story, a correction, or a partnership, head to our Contact page.`;
+
+const CONTACT_TEXT = `We'd love to hear from you.
+
+For general enquiries, story tips, corrections, or advertising questions, email us at: hello@glitchory.com
+
+We read every message and aim to reply within a few business days.`;
+
+const PRIVACY_TEXT = `Last updated: 2026
+
+This Privacy Policy explains how glitchory ("we", "us") handles information when you visit our website.
+
+## Information we collect
+We do not require you to create an account or submit personal information to read our content. We may collect standard, non-identifying technical data such as browser type, device, and pages visited, through analytics and advertising tools.
+
+## Cookies
+Our site uses cookies and similar technologies to understand how visitors use the site and to display advertising.
+
+## Advertising and third parties
+We use Google AdSense to display ads. Third-party vendors, including Google, use cookies to serve ads based on a user's prior visits to this and other websites. You may opt out of personalised advertising by visiting Google's Ads Settings.
+
+## Children's privacy
+This site is not directed at children under 13, and we do not knowingly collect personal information from them.
+
+## Contact
+Questions about this policy can be sent to hello@glitchory.com.`;
+
 // Produce a clean, unique slug (e.g. "the-new-gpu", then "-2", "-3" only on collision)
 async function uniqueSlug(base, excludeId) {
   let root = slugify(base) || 'post';
@@ -353,13 +521,16 @@ app.get('/robots.txt', (req, res) => {
 
 // sitemap.xml — lists every page so Google can discover and index them
 app.get('/sitemap.xml', async (req, res) => {
-  const urls = [SITE_URL + '/', SITE_URL + '/news', SITE_URL + '/about', SITE_URL + '/contact', SITE_URL + '/privacy'];
+  const entries = [
+    { loc: SITE_URL + '/' }, { loc: SITE_URL + '/news' },
+    { loc: SITE_URL + '/about' }, { loc: SITE_URL + '/contact' }, { loc: SITE_URL + '/privacy' }
+  ];
   if (await ensureDB()) {
     const arts = await articlesCol.find({ published: true }).sort({ created_at: -1 }).toArray();
-    for (const a of arts) urls.push(SITE_URL + '/article/' + a.slug);
+    for (const a of arts) entries.push({ loc: SITE_URL + '/article/' + a.slug, lastmod: dateOnly(a.updated_at || a.created_at) });
   }
   const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
-    urls.map(u => '  <url><loc>' + escapeHtml(u) + '</loc></url>').join('\n') +
+    entries.map(e => '  <url><loc>' + escapeHtml(e.loc) + '</loc>' + (e.lastmod ? '<lastmod>' + e.lastmod + '</lastmod>' : '') + '</url>').join('\n') +
     '\n</urlset>\n';
   res.type('application/xml').send(xml);
 });
@@ -371,32 +542,80 @@ function getHtmlShell() {
   return htmlShell;
 }
 
-// Article pages: inject real title + meta description + keywords + social tags
-// so Google and social scrapers see the right info even without running JS.
+// Homepage: server-render the latest stories so crawlers see real content + links.
+app.get('/', async (req, res) => {
+  let html = getHtmlShell();
+  try {
+    const head = buildHead({
+      title: 'glitchory \u2014 Tech & Gaming News, Reviews and Guides',
+      desc: 'glitchory covers the latest technology and gaming news, hands-on reviews, and practical guides.',
+      canonical: SITE_URL + '/',
+      extra: jsonLd({ '@context': 'https://schema.org', '@type': 'WebSite', name: 'glitchory', url: SITE_URL,
+        description: 'Tech and gaming news, reviews and guides.' })
+    });
+    html = applyHead(html, head);
+    if (await ensureDB()) {
+      const arts = await articlesCol.find({ published: true }).sort({ created_at: -1 }).limit(6).toArray();
+      html = injectRoot(html, staticChrome(listSeoHtml(arts, 'Latest Stories', 'The latest in technology and gaming')));
+    }
+  } catch (e) { /* fall back to plain shell */ }
+  res.type('html').send(html);
+});
+
+// News listing: server-render all published articles.
+app.get('/news', async (req, res) => {
+  let html = getHtmlShell();
+  try {
+    html = applyHead(html, buildHead({
+      title: 'News \u2014 glitchory',
+      desc: 'All the latest technology and gaming news from glitchory.',
+      canonical: SITE_URL + '/news'
+    }));
+    if (await ensureDB()) {
+      const arts = await articlesCol.find({ published: true }).sort({ created_at: -1 }).limit(50).toArray();
+      html = injectRoot(html, staticChrome(listSeoHtml(arts, 'Latest News', '')));
+    }
+  } catch (e) { /* fall back to plain shell */ }
+  res.type('html').send(html);
+});
+
+// Static pages: server-render their text so they aren't empty for crawlers / AdSense review.
+function serveStatic(res, pathName, title, desc, body) {
+  let html = getHtmlShell();
+  html = applyHead(html, buildHead({ title: title + ' \u2014 glitchory', desc, canonical: SITE_URL + pathName }));
+  html = injectRoot(html, staticChrome(staticPageSeoHtml(title, body)));
+  res.type('html').send(html);
+}
+app.get('/about',   (req, res) => serveStatic(res, '/about',   'About glitchory', 'About glitchory \u2014 an independent tech and gaming publication.', ABOUT_TEXT));
+app.get('/contact', (req, res) => serveStatic(res, '/contact', 'Contact Us',      'Contact glitchory with story tips, corrections, or advertising enquiries.', CONTACT_TEXT));
+app.get('/privacy', (req, res) => serveStatic(res, '/privacy', 'Privacy Policy',  'How glitchory handles your information, cookies, and advertising.', PRIVACY_TEXT));
+
+// Article pages: inject full title + meta + social tags + Article structured data,
+// AND the real article body, so Google/AdSense see complete content without running JS.
 app.get('/article/:slug', async (req, res) => {
   let html = getHtmlShell();
   try {
     if (await ensureDB()) {
       const a = await articlesCol.findOne({ slug: req.params.slug, published: true });
       if (a) {
-        const title = escapeHtml(a.title + ' | glitchory');
-        const desc = escapeHtml((a.meta_description || a.excerpt || a.title).slice(0, 300));
+        const desc = (a.meta_description || a.excerpt || a.title).slice(0, 300);
         const url = SITE_URL + '/article/' + a.slug;
-        const ogImage = (a.featured_image && !a.featured_image.startsWith('data:')) ? a.featured_image : '';
-        let head = '<title>' + title + '</title>';
-        head += '\n  <meta name="description" content="' + desc + '">';
-        if (a.keywords) head += '\n  <meta name="keywords" content="' + escapeHtml(a.keywords) + '">';
-        head += '\n  <link rel="canonical" href="' + escapeHtml(url) + '">';
-        head += '\n  <meta property="og:type" content="article">';
-        head += '\n  <meta property="og:title" content="' + escapeHtml(a.title) + '">';
-        head += '\n  <meta property="og:description" content="' + desc + '">';
-        head += '\n  <meta property="og:url" content="' + escapeHtml(url) + '">';
-        if (ogImage) head += '\n  <meta property="og:image" content="' + escapeHtml(ogImage) + '">';
-        head += '\n  <meta name="twitter:card" content="' + (ogImage ? 'summary_large_image' : 'summary') + '">';
-        // Replace the default <title> and the default description with the article's
-        html = html
-          .replace(/<title>[\s\S]*?<\/title>/, head)
-          .replace(/<meta name="description"[^>]*>/, '');
+        const ogImage = isRealImage(a.featured_image) ? a.featured_image : '';
+        let extra = '';
+        if (a.keywords) extra += '<meta name="keywords" content="' + escapeHtml(a.keywords) + '">\n  ';
+        extra += jsonLd({
+          '@context': 'https://schema.org', '@type': 'Article',
+          headline: a.title, description: desc,
+          datePublished: a.created_at, dateModified: a.updated_at || a.created_at,
+          author: { '@type': 'Organization', name: 'glitchory' },
+          publisher: { '@type': 'Organization', name: 'glitchory' },
+          mainEntityOfPage: url, ...(ogImage ? { image: ogImage } : {})
+        });
+        html = applyHead(html, buildHead({
+          title: a.title + ' | glitchory', desc, canonical: url,
+          image: ogImage, type: 'article', extra
+        }));
+        html = injectRoot(html, staticChrome(articleSeoHtml(a)));
       }
     }
   } catch (e) { /* fall back to the plain shell */ }

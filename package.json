@@ -1,7 +1,7 @@
 {
   "name": "glitchory",
-  "version": "4.0.0",
-  "description": "glitchory - tech and gaming news site",
+  "version": "5.0.0",
+  "description": "glitchory - tech and gaming news site (server-rendered for SEO)",
   "main": "server.js",
   "type": "module",
   "scripts": {
