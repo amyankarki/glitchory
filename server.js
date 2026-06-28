@@ -55,12 +55,76 @@ function escapeHtml(s) {
 //  instead of a blank screen.
 // ============================================
 
-// Minimal, safe Markdown -> HTML. Escapes everything first (no HTML injection),
-// then re-adds basic structure. Good enough for crawlers; the client renders the
-// pretty version with marked.js.
+// ---------------------------------------------------------------------------
+//  Markdown + safe-HTML -> HTML  (server side, for SEO / first paint)
+//  This now mirrors the browser's marked.js so the two renderers stop
+//  disagreeing: real tables, raw HTML pass-through (so a table or highlight box
+//  copy-pasted straight from a doc survives instead of being escaped to text),
+//  and a ==highlight== shortcut. Article content is written ONLY by the
+//  authenticated admin, so HTML is allowed; we still strip the genuinely
+//  dangerous bits (scripts / iframes / inline event handlers) as a safety net.
+// ---------------------------------------------------------------------------
+
+// Strip the dangerous parts out of admin-authored HTML.
+function sanitizeHtml(s) {
+  return String(s || '')
+    .replace(/<\s*(script|style|iframe|object|embed|form)[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+    .replace(/<\s*(script|style|iframe|object|embed|form)\b[^>]*\/?>/gi, '')
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+    .replace(/\son\w+\s*=\s*[^\s>]+/gi, '')
+    .replace(/javascript:/gi, '');
+}
+
+// Escape ONLY stray "<" and "&" in plain text, leaving real HTML tags intact
+// (this is roughly how marked treats inline HTML).
+function softEscape(s) {
+  return String(s)
+    .replace(/&(?!#?[a-zA-Z0-9]+;)/g, '&amp;')
+    .replace(/<(?![a-zA-Z/!])/g, '&lt;');
+}
+
+// Block-level HTML tags we pass through verbatim when a paragraph starts with one.
+const BLOCK_HTML_RE = /^<(table|thead|tbody|tfoot|tr|td|th|div|section|article|aside|figure|figcaption|details|summary|blockquote|pre|ul|ol|li|hr|img|picture|p|h[1-6]|header|footer|nav|mark|dl|dt|dd|center)\b/i;
+const VOID_TAGS = new Set(['hr', 'img', 'br', 'input', 'source', 'col', 'picture']);
+
+// Grab a complete top-level HTML element starting at `start`, balancing its own
+// open/close tags so a multi-line table (even with blank lines inside) stays whole.
+function captureHtmlBlock(lines, start) {
+  const tag = lines[start].trim().match(/^<([a-z0-9]+)/i)[1].toLowerCase();
+  if (VOID_TAGS.has(tag)) return { html: lines[start], next: start + 1 };
+  const openRe = new RegExp('<' + tag + '\\b', 'gi');
+  const closeRe = new RegExp('</' + tag + '\\b', 'gi');
+  let depth = 0, buf = [], i = start;
+  for (; i < lines.length; i++) {
+    const ln = lines[i];
+    depth += (ln.match(openRe) || []).length - (ln.match(closeRe) || []).length;
+    buf.push(ln);
+    if (depth <= 0) { i++; break; }
+  }
+  return { html: buf.join('\n'), next: i };
+}
+
+// GitHub-style pipe-table helpers.
+function isTableSep(line) {
+  return /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)+\|?\s*$/.test(line || '');
+}
+function splitRow(line) {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '')
+    .split(/(?<!\\)\|/).map(c => c.replace(/\\\|/g, '|').trim());
+}
+function alignOf(cell) {
+  const l = cell.startsWith(':'), r = cell.endsWith(':');
+  return (l && r) ? 'center' : r ? 'right' : l ? 'left' : '';
+}
+
+// Inline formatting. Lets safe inline HTML (e.g. <mark>, <a>, <img>) through and
+// adds **bold**, *italic*, `code`, [links](url), ![images](url) and ==highlight==.
 function inlineMd(s) {
-  s = escapeHtml(s);
-  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, t, u) => '<a href="' + u + '" rel="noopener">' + t + '</a>');
+  s = softEscape(s);
+  s = s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, (m, a, u) => '<img src="' + u + '" alt="' + a + '" loading="lazy">');
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, t, u) => '<a href="' + u + '" rel="noopener" target="_blank">' + t + '</a>');
+  s = s.replace(/==([^=]+)==/g, '<mark>$1</mark>');
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
   s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -73,17 +137,66 @@ function renderMarkdownServer(text) {
   const flush = () => { if (para.length) { html += '<p>' + para.map(inlineMd).join('<br>') + '</p>\n'; para = []; } };
   while (i < lines.length) {
     const line = lines[i], t = line.trim();
+
     if (t === '') { flush(); i++; continue; }
-    const h = t.match(/^(#{1,4})\s+(.*)$/);
+
+    // Raw HTML block (pasted table, highlight/callout box, figure...) — pass through.
+    if (BLOCK_HTML_RE.test(t)) {
+      flush();
+      const cap = captureHtmlBlock(lines, i);
+      html += sanitizeHtml(cap.html) + '\n';
+      i = cap.next; continue;
+    }
+
+    // Markdown pipe table: a header row immediately followed by a |---|---| line.
+    if (t.includes('|') && isTableSep(lines[i + 1])) {
+      flush();
+      const headers = splitRow(lines[i]);
+      const aligns = splitRow(lines[i + 1]).map(alignOf);
+      i += 2;
+      let body = '';
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== '') {
+        const cells = splitRow(lines[i]);
+        body += '<tr>' + cells.map((c, x) => '<td' + (aligns[x] ? ' style="text-align:' + aligns[x] + '"' : '') + '>' + inlineMd(c) + '</td>').join('') + '</tr>\n';
+        i++;
+      }
+      html += '<div class="table-wrap"><table><thead><tr>'
+        + headers.map((c, x) => '<th' + (aligns[x] ? ' style="text-align:' + aligns[x] + '"' : '') + '>' + inlineMd(c) + '</th>').join('')
+        + '</tr></thead><tbody>\n' + body + '</tbody></table></div>\n';
+      continue;
+    }
+
+    // Horizontal rule (--- *** ___).
+    if (/^([-*_])\1{2,}$/.test(t)) { flush(); html += '<hr>\n'; i++; continue; }
+
+    const h = t.match(/^(#{1,6})\s+(.*)$/);
     if (h) { flush(); const l = h[1].length; html += '<h' + l + '>' + inlineMd(h[2]) + '</h' + l + '>\n'; i++; continue; }
     if (/^>\s?/.test(t)) { flush(); html += '<blockquote>' + inlineMd(t.replace(/^>\s?/, '')) + '</blockquote>\n'; i++; continue; }
     if (/^[-*]\s+/.test(t)) { flush(); html += '<ul>\n'; while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) { html += '<li>' + inlineMd(lines[i].trim().replace(/^[-*]\s+/, '')) + '</li>\n'; i++; } html += '</ul>\n'; continue; }
     if (/^\d+\.\s+/.test(t)) { flush(); html += '<ol>\n'; while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) { html += '<li>' + inlineMd(lines[i].trim().replace(/^\d+\.\s+/, '')) + '</li>\n'; i++; } html += '</ol>\n'; continue; }
+
     para.push(line); i++;
   }
   flush();
   return html;
 }
+
+// CSS injected into every server-rendered page's <head>. Because React only
+// replaces #root (never <head>), these styles also apply once the live app
+// takes over — so pasted tables and highlights look right everywhere.
+const ARTICLE_EXTRA_CSS =
+  '.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:24px 0}'
+  + '.article-body table,.article-detail table,.table-wrap table{border-collapse:collapse;width:100%;font-size:.95rem;background:#fff;border:1px solid #e3e3e8;border-radius:10px;overflow:hidden}'
+  + '.article-body th,.article-body td,.article-detail th,.article-detail td,.table-wrap th,.table-wrap td{padding:11px 14px;border-bottom:1px solid #ececf1;text-align:left;vertical-align:top}'
+  + '.article-body thead th,.article-detail thead th,.table-wrap thead th{background:#1f2430;color:#fff;font-weight:600;border-bottom:none}'
+  + '.article-body tbody tr:nth-child(even),.article-detail tbody tr:nth-child(even),.table-wrap tbody tr:nth-child(even){background:#fafafc}'
+  + '.article-body tbody tr:last-child td,.article-detail tbody tr:last-child td,.table-wrap tbody tr:last-child td{border-bottom:none}'
+  + 'mark{background:#fff3b0;color:inherit;padding:.05em .3em;border-radius:3px}'
+  + '.callout,.note,.tip,.info,.warning{margin:24px 0;padding:16px 18px;border-radius:10px;border-left:4px solid #6c5ce7;background:#f4f2ff;line-height:1.6}'
+  + '.callout p:last-child,.note p:last-child,.tip p:last-child,.info p:last-child,.warning p:last-child{margin-bottom:0}'
+  + '.tip{border-left-color:#00b894;background:#eafaf4}'
+  + '.warning{border-left-color:#e17055;background:#fdeee9}'
+  + '.info{border-left-color:#0984e3;background:#e9f3fd}';
 
 function isRealImage(src) { return src && !src.startsWith('data:'); }
 function dateOnly(d) { try { return new Date(d).toISOString().slice(0, 10); } catch { return ''; } }
@@ -163,6 +276,7 @@ function buildHead({ title, desc, canonical, image, type, extra }) {
   if (image) h += '\n  <meta property="og:image" content="' + escapeHtml(image) + '">';
   h += '\n  <meta name="twitter:card" content="' + (image ? 'summary_large_image' : 'summary') + '">';
   if (extra) h += '\n  ' + extra;
+  h += '\n  <style>' + ARTICLE_EXTRA_CSS + '</style>';
   return h;
 }
 
